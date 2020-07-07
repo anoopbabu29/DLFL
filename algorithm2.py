@@ -9,7 +9,9 @@ curr_time: int
 time_run: int = 10
 is_finite_time: bool = False
 
-def algorithm(D):
+random.seed(3)
+
+def algorithm(D, state_set, action_set):
     global num_skipped, curr_time, time_run, is_finite_time
 
     TM  = {"Q": None, "sigma": None, "delta": None, "q0": 0, "q_accept": 1, "q_reject": 2} # < Q, ∑, ∂, q0, qaccept, qreject >
@@ -18,9 +20,9 @@ def algorithm(D):
     # Define ∑ = { all states, all actions, 1, 0, _ } finite
     # Define q0, qaccept, qreject Semantically means start mode, can do, and can’t do
 
-    num_extra_modes = 0
+    num_extra_modes = 1
     num_discrete_states = 2
-    num_discrete_actions = 2
+    num_discrete_actions = 3
 
     assert(num_extra_modes >= 0)
     assert(num_discrete_states > 0)
@@ -42,8 +44,8 @@ def algorithm(D):
 
     if True:
 
-        F = { i : None for i in itertools.product(discrete_states, discrete_actions)}
-        I = { i : None for i in itertools.product(discrete_states, discrete_states)}
+        F = { i : None for i in itertools.product(state_set, action_set)}
+        I = { i : None for i in itertools.product(state_set, state_set)}
 
         for episode in D:
             for d in episode:
@@ -52,11 +54,13 @@ def algorithm(D):
 
         print(F)
         print(I)
+    
 
     # Enumerate all possible programs ∂ | ∂ := (Q x ∑ -> Q x ∑ x {left, right})
     ## N_∂ = (|Q| x (|S| + |A| + 3) x 2) ^ (|Q| x (|S| + |A| + 3))
 
     input_set = [list(filter(lambda x: x != 1 and x != 2, TM["Q"])), TM["sigma"]]
+    input_set = [s for s in input_set if (None == random.shuffle(s))] # Random shuffle
     input_combinations = list(itertools.product(*input_set))
 
     output_set = [TM["Q"], TM["sigma"], ["L","R"]]
@@ -132,37 +136,56 @@ def algorithm(D):
 
         #print("delta:", delta)
 
-        # For each ∂_i check consistency on D
+        # For each ∂_i find/check consistency on D
+        ## Map actual states and actions -> ∑’s states and actions (semantic grounding)
+        # TODO Define a mapping random
+        phi_state = {".":"s0", "-":"s1"}
+        phi_action = {"_":"a0", "p":"a1", "q":"a2"}
+
         ## This means running TM on s_i and s_f should output the path [s_i, a_i, …. a_f-1, s_f] or terminate with q_reject after max time T
         ## Where the path should exist in D if trajectory s_i to s_f exists in D (or) F_θ(ø(s), a) = ø(s’) for all states in path
         ## ??? I want to say this allows for generalization if we restrict the size of |Q|, |∑|, and |T|
 
         # Run TM on cs_i and s_f for max steps T
-        T = 1000
-        s_i = "s0"
-        s_f = "s1"
-        tape = [s_i, s_f]
+        for episode in D:
+            T = 1000
+            tape = []
+            final_tape = []
+            inp = True
+            for i in episode:
+                if inp == True:
+                    tape.append(phi_state[i[0]])
+                    tape.append(phi_action[i[1]])
+                if i[1] == "q":
+                    inp = False
+                final_tape.append(phi_state[i[0]])
+                final_tape.append(phi_action[i[1]])
 
-        TM["delta"] = copy.deepcopy(delta)
-        output, steps, is_reject = run_TM(TM, tape, T, prev_modified)
-        print("Tape Output:", output)
-        print("steps:",steps)
+            TM["delta"] = copy.deepcopy(delta)
+            print("Tape Input:", tape)
+            output, steps, is_reject = run_TM(TM, tape, T, prev_modified)
+            print("Target Output:", final_tape)
+            print("Tape Output:", output)
+            print("steps:",steps)
 
-        if is_reject:
-            print('Went to reject state')
-            continue
+            if is_reject:
+                print('Went to reject state')
+                break
 
-        #if steps == T:
-            #quit()
+            #if steps == T:
+                #quit()
 
-        # Validate tape output with forward model
-        valid = validate(output, s_i, s_f, discrete_states, discrete_actions, F)
+            # Validate tape output with forward model
+            valid = validate(output, final_tape, discrete_states, discrete_actions, F)
 
-        print(valid)
-        if valid:
-            print("MAGICAL")
-            print(TM["delta"])
-            quit()
+            print(valid)
+            if valid:
+                print("MAGICAL")
+                print(TM["delta"])
+                quit() # TODO Remove
+            else:
+                # TODO Change TM to fit data????
+                break
 
     return TM
 
@@ -181,28 +204,12 @@ def algorithm(D):
 
 
 # !!! IF ERROR THIS IS PROABLY MESSED UP !!! #
-def validate(output, s_i, s_f, discrete_states, discrete_actions, F):
+def validate(output, final_tape, discrete_states, discrete_actions, F):
     valid = False
 
-    if output[0] == s_i and output[-1] == s_f:
-        for i in range(0,len(output) - 2,2):
+    if len(output) == len(final_tape):
+        if not (False in [output[i] == final_tape[i] for i in range(len(final_tape))]):
             valid = True
-            print("THIS HAPPENED")
-            print(output[i])
-            print(output[i+1])
-
-
-            if output[i] not in discrete_states:
-                valid = False
-                break
-
-            if output[i+1] not in discrete_actions:
-                valid = False
-                break
-
-            if F[(output[i],output[i+1])] != output[i+2]:
-                valid = False
-                break
 
     return valid
 
@@ -358,8 +365,19 @@ def is_valid_combination(input_combinations: List[Tuple[int, str]],
     return filter_combination_func
 
 if __name__ == '__main__':
-    D = [[("s0","a0","s0"),("s0","a1","s1"),("s1","a1","s0")],
-    [("s0","a1","s1"),("s1","a0","s0"),("s0","a1","s1")],
-    [("s0","a0","s0"),("s0","a0","s0"),("s0","a1","s1")]]
+    #D = [[("s0","a0","s0"),("s0","a1","s1"),("s1","a1","s0")],
+    #[("s0","a1","s1"),("s1","a0","s0"),("s0","a1","s1")],
+    #[("s0","a0","s0"),("s0","a0","s0"),("s0","a1","s1")]]
 
-    algorithm(D)
+    action_set = ["_","p","q"]
+    state_set = ["-","."]
+
+    D = []
+
+    # Random data 1-10
+    for i in range(1,11):
+        for j in range(1,11):
+            episode = " _ ".join(["-" + random.choice([" _ .",""]) for _ in range(i)]) + " p " + " _ ".join(["-"  + random.choice([" _ .",""]) for _ in range(j)]) + " q " + " _ ".join(["-" for _ in range(i+j)])
+            D.append([(episode.split()[i], episode.split()[i+1], episode.split()[i+2]) for i in range(0,len(episode.split())-2,2)])
+
+    algorithm(D, state_set, action_set)
