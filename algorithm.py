@@ -359,7 +359,7 @@ def is_valid_combination(input_combinations: List[Tuple[int, str]],
 
 if __name__ == '__main__':
     D = [[("s0","a0","s0"),("s0","a1","s1"),("s1","a1","s0")],
-    [("s0","a1","s1"),("s1","a0","s0"),("s0","a1","s1")],
-    [("s0","a0","s0"),("s0","a0","s0"),("s0","a1","s1")]]
+         [("s0","a1","s1"),("s1","a0","s0"),("s0","a1","s1")],
+         [("s0","a0","s0"),("s0","a0","s0"),("s0","a1","s1")]]
 
     algorithm(D)
