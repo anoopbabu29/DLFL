@@ -13,6 +13,7 @@ is_finite_time: bool = False
 
 random.seed(3)
 
+
 def algorithm(D: List[List[Tuple[str, str, str]]],
               state_set: List[str],
               action_set: List[str]):
@@ -348,7 +349,6 @@ def run_TM(TM, tape: List[str], T, modified):
                 print('Infinite Write on tape')
                 break
         
-        
         trail.append(((current_mode, read), instruction))
 
         # increment steps
@@ -366,14 +366,19 @@ def run_TM(TM, tape: List[str], T, modified):
 
 def djikstra(delta, modes: List[int], sigma: List[str],
              q_in: int = 0, q_accept: int = 1, q_reject: int = 2) -> bool:
+    ''' Djikstra's Algorithm finding q_accept from q_in '''
     dist: List[int] = [-1 for _ in modes]
     dist[q_in] = 0
     dist[q_reject] = -2
-    num_visited: int = 1
-    visited: List[int] = [False] * len(modes)
+    # num_visited: int = 1
+    # visited: List[int] = [False] * len(modes)
     count = 0
 
-    while (pot_dots := list(filter(lambda x: x > -1, dist))) != []:
+    while True:
+        pot_dots = list(filter(lambda x: x > -1, dist))
+        if pot_dots == []:
+            break
+
         mode: int = dist.index(min(pot_dots))
 
         if mode == q_accept:
@@ -386,8 +391,8 @@ def djikstra(delta, modes: List[int], sigma: List[str],
 
         new_dist: int = dist[mode] + 1
         for neighbor in neighbors:
-            if ((dist[neighbor] == -1 and dist[neighbor] != -2)
-                or new_dist < dist[neighbor]):
+            if ((dist[neighbor] == -1
+                 and dist[neighbor] != -2) or new_dist < dist[neighbor]):
                 dist[neighbor] = new_dist
 
         dist[mode] = -2
@@ -395,9 +400,9 @@ def djikstra(delta, modes: List[int], sigma: List[str],
         if count >= 10:
             break
 
-        #print(mode)
-        #print(num_visited)
-        #print(dist)
+        # print(mode)
+        # print(num_visited)
+        # print(dist)
 
     return False
 

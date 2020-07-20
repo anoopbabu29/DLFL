@@ -106,32 +106,21 @@ def minimize_tm(turing_mach: Dict[str, Any]) -> Dict[str, Any]:
     return min_tm
 
 
-def search_tm_reduce_algo(d_train: List[List[str]],
-                          check_time: bool = True) -> Dict[str, Any]:
+def search_tm_reduce_algo(d_train: List[List[str]]) -> Dict[str, Any]:
     ''' Function that finds the correct turing_mach '''
     turing_mach: Dict[str, Any] = init_tm()
-
-    # num_extra_modes: int = 2
-    # num_discrete_states: int = 2
-    # num_discrete_actions: int = 3
-
-    # assert num_discrete_states > 0
-    # assert num_discrete_actions > 0
-    # assert num_extra_modes >= 0
+    curr_time: float = time.time()
 
     assert d_train != []
-    # assert len(D_train) == len(D_valid)
-
-    if check_time:
-        curr_time: float = time.time()
 
     for i, episode in enumerate(d_train):
         turing_mach = minimize_tm(
             conv_ntm_to_dtm(
                 comb_tms_to_ntm(turing_mach, gen_tm_from_episode(episode))))
-        print(f'{i+1}/{len(d_train)} | {time.time() - curr_time}s')
 
-    print(f'Reduce Algo Time: {time.time() - curr_time}')
+        print(f'{i+1}/{len(d_train)} | {(time.time() - curr_time):.2f}s')
+
+    print(f'Reduce Algo Time: {(time.time() - curr_time):.2f}')
 
     return turing_mach
 
@@ -164,9 +153,9 @@ def init_dumb_add_data() -> Tuple[List[List[str]], List[List[str]]]:
     for i in range(1, 11):
         for j in range(1, 11):
             episode_train: List[str] = (['-' for _ in range(i)] + ['_'] +
-                                        ['-' for _ in range(j)] + ['_'])
+                                        ['-' for _ in range(j)])
             episode_valid: List[str] = (['-' for _ in range(i)] +
-                                        ['-' for _ in range(j)] + ['_'])
+                                        ['-' for _ in range(j)])
 
             d_train.append(episode_train)
             d_valid.append(episode_valid)
