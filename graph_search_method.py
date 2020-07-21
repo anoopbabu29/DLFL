@@ -8,30 +8,167 @@ import math
 # Local Modules
 import driver
 
+# Defined types
+DeltaOut = Tuple[int, str, str]
+Delta = Dict[Tuple[int, str], DeltaOut]
+Comb = Tuple[List[List[int]], List[List[int]]]
+
 # Globals
 CURR_TIME: float = 0
 NUM_PERMS: int = 0
 COUNT: int = 0
 NUM_SKIPPED: int = 0
 
-# Defined types
-DeltaOut = Tuple[int, str, str]
-Delta = Dict[Tuple[int, str], DeltaOut]
+
+def factorial(num: int) -> int:
+    ''' Calculates the factorial of a number'''
+    return num * factorial(num - 1) if num > 1 else 1
 
 
-def filter_lim_combs(comb: Dict[str, DeltaOut]) -> bool:
-    ''' Method checking if list is valid '''
-    halt: DeltaOut = (-1, '-1', '-1')
-    vals: List[DeltaOut] = list(comb.values())
-
-    return halt in vals
+def fact_range(num_a: int, num_b: int) -> int:
+    ''' Calculates the factorial of num_a until it reaches num_b '''
+    return num_a * fact_range(num_a - 1, num_b) if num_a > num_b else 1
 
 
-def gen_mode_perms(sigma: List[str],
+def num_combinations(num_n: int, num_r: int) -> int:
+    ''' Calculates the number of combinations of a number '''
+    return int(fact_range(num_n, num_r) / factorial(num_n - num_r))
+
+
+def calc_num_lim_perms(num_modes: int, num_sigma: int) -> int:
+    ''' Calculates the number of permatations of limited modes '''
+    num_perm: int = 2 * num_modes * num_sigma + 1
+
+    return sum([int(num_combinations(num_sigma, i + 1) *
+                    math.pow(num_perm - 1, num_sigma - (i + 1)))
+                for i in range(num_sigma)])
+
+
+def calc_num_comm_perms(num_modes: int, num_sigma: int) -> int:
+    ''' Calculates the number of permutations of common modes '''
+    num_perm: int = 2 * num_modes * num_sigma + 1
+
+    return int(math.pow(num_perm, num_sigma) - 1)
+
+
+def calc_num_perms(num_modes: int, num_sigma: int) -> int:
+    ''' Calculates the number of permutations '''
+    num_lim: int = num_modes * calc_num_lim_perms(num_modes, num_sigma)
+
+    fact_fract: int = fact_range(calc_num_comm_perms(num_modes, num_sigma),
+                                 calc_num_comm_perms(num_modes, num_sigma) -
+                                 num_modes + 1)
+
+    print(f'{num_lim = } {fact_fract = }')
+
+    return int(num_lim * fact_fract)
+
+
+# Lines 71-163 intends to replace get_mode_perms
+# May not be beneficial
+
+
+def get_combinations(pool: List[int], num_r: int, taken: List[int],
+                     forg_pool: List[int]) -> Comb:
+    ''' Returns all combinations of numbers '''
+    combinations: List[List[int]] = []
+    rem_combinations: List[List[int]] = []
+
+    if len(taken) == num_r:
+        return [taken], [forg_pool + pool]
+
+    for i in range(len(pool) - num_r + len(taken) + 1):
+        all_combinations: Comb = get_combinations(
+            pool[i+1:], num_r, taken + [pool[i]], forg_pool + pool[:i])
+        combinations += all_combinations[0]
+        rem_combinations += all_combinations[1]
+
+    return combinations, rem_combinations
+
+
+def extract_perm(sigma: List[str], num_modes: int, ind: int) -> DeltaOut:
+    ''' Get permutation from possible transitions via index '''
+    move_dir: List[str] = ['L', 'R']
+
+    if ind == 2 * len(sigma) * num_modes:
+        return (-1, '-1', '-1')
+
+    symb: str = sigma[int(ind/(2*num_modes))]
+    ind -= int(ind/(2*num_modes)) * 2 * num_modes
+
+    return int(ind/2), symb, move_dir[ind % 2]
+
+
+def gen_mode_perm(sigma: List[str], num_modes: int,
+                  ind: int) -> Dict[str, DeltaOut]:
+    ''' Get permutation of possible modes via index '''
+    perm: Dict[str, DeltaOut] = {}
+    num_perm: int = 2 * len(sigma) * num_modes + 1
+
+    for i, symb in enumerate(sigma):
+        div_num: int = int(math.pow(num_perm, len(sigma) - i - 1))
+        out_comb_ind: int = int(ind/div_num)
+
+        perm[symb] = extract_perm(sigma, num_modes, out_comb_ind)
+
+        ind -= out_comb_ind * div_num
+
+    return perm
+
+
+def gen_lim_mode_perm(sigma: List[str], num_modes: int,
+                      ind: int) -> Dict[str, DeltaOut]:
+    ''' Get permutation of possible modes
+        containing Halt transition via index '''
+    perm: Dict[str, DeltaOut] = {}
+    num_perm: int = 2 * len(sigma) * num_modes
+
+    poss_ranges: List[int] = []
+    for i in range(len(sigma)):
+        poss_ranges.append(0)
+        if poss_ranges != []:
+            poss_ranges[i] += poss_ranges[i-1]
+
+        poss_ranges[i] += int(num_combinations(len(sigma), i + 1) *
+                              math.pow(num_perm, len(sigma) - 1 - i))
+
+    i_range: int = 0
+    for poss_range in poss_ranges:
+        low_range: int = poss_ranges[i_range-1] if i_range != 0 else 0
+        if low_range <= ind < poss_range:
+            break
+        i_range += 1
+
+    offset: int = int((poss_ranges[i_range] - low_range) /
+                      num_combinations(len(sigma), i_range + 1))
+
+    pot_combinations: Comb = get_combinations(list(range(len(sigma))),
+                                              i_range + 1, [], [])
+
+    off_ind: int = int((ind - low_range)/offset)
+
+    halt_combs: List[int] = pot_combinations[0][off_ind]
+    other_combs: List[int] = pot_combinations[1][off_ind]
+
+    ind = ind - low_range - off_ind * offset
+
+    for comb in halt_combs:
+        perm[sigma[comb]] = (-1, '-1', '-1')
+
+    for i, comb in enumerate(other_combs):
+        div_num: int = int(math.pow(num_perm, len(other_combs) - i - 1))
+
+        perm[sigma[comb]] = extract_perm(sigma, num_modes, int(ind/div_num))
+        ind -= int(ind/div_num) * div_num
+
+    return perm
+
+
+def get_mode_perms(sigma: List[str],
                    num_modes: int) -> Tuple[List[Dict[str, DeltaOut]],
                                             List[Dict[str, DeltaOut]]]:
     ''' Generates the possible output combinations for a state '''
-    halt = (-1, '-1', '-1')
+    halt: DeltaOut = (-1, '-1', '-1')
 
     output_set: List[List[Any]] = [list(range(num_modes)), sigma, ['L', 'R']]
     output_combinations: List[DeltaOut] = list(itertools.product(*output_set))
@@ -44,7 +181,7 @@ def gen_mode_perms(sigma: List[str],
         for comb in list(itertools.product(*mode_set))]
 
     lim_combinations: List[Dict[str, DeltaOut]] = list(filter(
-        filter_lim_combs, mode_combinations))
+        lambda comb: halt in comb.values(), mode_combinations))
 
     return mode_combinations, lim_combinations
 
@@ -86,8 +223,8 @@ def check_inf_tape(trail: List[Tuple[Tuple[int, str], DeltaOut]],
 
 
 def run_tm(delta: Delta, tape: List[str], max_steps: int,
-           modified: Dict[Tuple[int, str], bool]) -> Tuple[List[str],
-                                                           int, bool]:
+           modified: Dict[Tuple[int, str], bool],
+           debug_mode: bool = False) -> Tuple[List[str], int, bool]:
     ''' Runs the TM and checks if it works '''
     global NUM_SKIPPED
 
@@ -106,10 +243,11 @@ def run_tm(delta: Delta, tape: List[str], max_steps: int,
         # INSTRUCTION
         instruction: DeltaOut = delta[(current_mode, read)]
 
-        # print(f'Instruction: {instruction}')
-        # print(f'Tape: {tape}, mode: {current_mode}, ind: {tape_idx}, '
-        #       f'curr_val: {tape[tape_idx]}')
-        # print()
+        if debug_mode:
+            print(f'Instruction: {instruction}')
+            print(f'Tape: {tape}, mode: {current_mode}, ind: {tape_idx}, ' +
+                  f'curr_val: {tape[tape_idx]}')
+            print()
 
         if instruction == (-1, '-1', '-1'):
             is_success = True
@@ -134,19 +272,19 @@ def run_tm(delta: Delta, tape: List[str], max_steps: int,
         if tape_idx >= len(tape):
             tape.append("_")
 
-            # if check_inf_tape(trail, current_mode, 'R'):
-            #     is_success = False
-            #     NUM_SKIPPED += 1
-            #     break
+            if check_inf_tape(trail, current_mode, 'R'):
+                is_success = False
+                NUM_SKIPPED += 1
+                break
 
         if tape_idx < 0:
             tape.insert(0, "_")
             tape_idx = 0
 
-            # if check_inf_tape(trail, current_mode, 'L'):
-            #     is_success = False
-            #     NUM_SKIPPED += 1
-            #     break
+            if check_inf_tape(trail, current_mode, 'L'):
+                is_success = False
+                NUM_SKIPPED += 1
+                break
 
         trail.append(((current_mode, read), instruction))
 
@@ -321,73 +459,32 @@ def factorial_perms_method(num_modes: int, sigma: List[str],
     global CURR_TIME
 
     CURR_TIME = time.time()
-    mode_perms, lim_mode_perms = gen_mode_perms(sigma, num_modes)
+    mode_perms, lim_mode_perms = get_mode_perms(sigma, num_modes)
+
     print(f'{len(mode_perms) = }')
     # pprint_perms(mode_perms)
+
+    # for i in range(int(math.pow(num_modes * len(sigma) * 2 + 1, len(sigma)))):
+    #     test_mode_perms.append(gen_mode_perm(sigma, num_modes, i))
+    # pprint_perms(test_mode_perms)
+
+    # print(test_mode_perms == mode_perms)
+
     print(f'{len(lim_mode_perms) = }')
+
     # pprint_perms(lim_mode_perms)
+
     print()
 
     for mode in range(num_modes):
-        delta: Delta = trav_factorial_perms(num_modes, sigma,
-                                            data_train, data_valid,
-                                            mode_perms, lim_mode_perms,
-                                            mode, {})
+        delta: Delta = trav_factorial_perms(num_modes, sigma, data_train,
+                                            data_valid, mode_perms,
+                                            lim_mode_perms, mode, {})
+
         if delta != {}:
             return delta
 
     return {}
-
-
-def factorial(num: int) -> int:
-    ''' Calculates the factorial of a number'''
-    return num * factorial(num - 1) if num > 1 else 1
-
-
-def calc_num_fact_perms(num_modes: int, num_sigma: int) -> int:
-    ''' Calculates the number of permutations '''
-    num_perm: int = 2 * num_modes * num_sigma + 1
-
-    num_lim: int = num_modes * int((num_sigma *
-                                    math.pow(num_perm, num_sigma - 1)) -
-                                   (math.pow(num_sigma, num_sigma - 1) - 1))
-
-    numerator: int = factorial(int(
-        math.pow(num_perm, num_sigma) - 1))
-    denominator: float = factorial(int(
-        math.pow(num_perm, num_sigma) - num_modes))
-    fact_fract: int = int(numerator / denominator)
-
-    print(f'{num_lim = } {fact_fract = }')
-
-    return int(num_lim * fact_fract)
-
-
-def main() -> None:
-    ''' Main Function used for testing '''
-    global NUM_PERMS
-
-    # Init data
-    data_train, data_valid, action_set, state_set = driver.init_dumb_add_data()
-
-    # Generates the phi function and applies it to Data
-    phi: Dict[str, str] = driver.gen_phi(action_set, state_set)
-    driver.conv_data_to_tm(data_train, phi)
-    driver.conv_data_to_tm(data_valid, phi)
-
-    sigma: List[str] = list(phi.values())
-    num_modes: int = 3
-
-    NUM_PERMS = calc_num_fact_perms(num_modes, len(sigma))
-
-    res_delta: Delta = factorial_perms_method(num_modes, sigma,
-                                              data_train, data_valid)
-
-    print(chr(27) + "[2J")
-    print(f'{COUNT}/{NUM_PERMS} - {COUNT*100/NUM_PERMS:.2f}% | ' +
-          f'Skipped {NUM_SKIPPED} | ' +
-          f'{time.time() - CURR_TIME:.2f}s')
-    print(res_delta)
 
 
 def test_valid_delta():
@@ -410,7 +507,35 @@ def test_valid_delta():
     }
 
     check_delta(delta_correct, data_train, data_valid,
-                num_modes, sigma, 1000, True)
+                num_modes, sigma, debug_mode=True)
+
+
+def main() -> None:
+    ''' Main Function used for testing '''
+    global NUM_PERMS
+
+    # Init data
+    data_train, data_valid, action_set, state_set = driver.init_dumb_add_data()
+
+    # Generates the phi function and applies it to Data
+    phi: Dict[str, str] = driver.gen_phi(action_set, state_set)
+    driver.conv_data_to_tm(data_train, phi)
+    driver.conv_data_to_tm(data_valid, phi)
+
+    sigma: List[str] = list(phi.values())
+    num_modes: int = 4
+    sigma = ['_', 's0', 's1']
+
+    NUM_PERMS = calc_num_perms(num_modes, len(sigma))
+
+    res_delta: Delta = factorial_perms_method(num_modes, sigma,
+                                              data_train, data_valid)
+
+    print(chr(27) + "[2J")
+    print(f'{COUNT}/{NUM_PERMS} - {COUNT*100/NUM_PERMS:.2f}% | ' +
+          f'Skipped {NUM_SKIPPED} | ' +
+          f'{time.time() - CURR_TIME:.2f}s')
+    print(res_delta)
 
 
 if __name__ == '__main__':
