@@ -2,9 +2,14 @@
 import time
 from typing import List, Dict, Tuple, Any
 
-SIGMA: List[str] = []
+# Local Imports
+import setup
 
+# Types
 DeltaOut = Tuple[int, str, str]
+
+# Globals
+SIGMA: List[str] = []
 
 
 def init_tm() -> Dict[str, Any]:
@@ -144,32 +149,6 @@ def gen_phi(action_set: List[str], state_set: List[str]) -> Dict[str, str]:
     return phi
 
 
-def init_dumb_add_data() -> Tuple[List[List[str]], List[List[str]]]:
-    ''' Sets up training and resulting data for the dumb addition '''
-    d_train: List[List[str]] = []
-    d_valid: List[List[str]] = []
-
-    # Random data 1-10
-    for i in range(1, 11):
-        for j in range(1, 11):
-            episode_train: List[str] = (['-' for _ in range(i)] + ['_'] +
-                                        ['-' for _ in range(j)])
-            episode_valid: List[str] = (['-' for _ in range(i)] +
-                                        ['-' for _ in range(j)])
-
-            d_train.append(episode_train)
-            d_valid.append(episode_valid)
-
-    return (d_train, d_valid)
-
-
-def conv_data_to_tm(data: List[List[str]], phi: Dict[str, str]) -> None:
-    ''' Converts the data into a form acceptable by turing_mach'''
-    for ep_ind, episode in enumerate(data):
-        for inp_ind, inp in enumerate(episode):
-            data[ep_ind][inp_ind] = phi[inp]
-
-
 def validate_tm(turing_mach: Dict[str, Any],
                 d_train: List[List[str]],
                 d_valid: List[List[str]]) -> bool:
@@ -196,17 +175,13 @@ def main() -> None:
     ''' Main Function '''
     global SIGMA
 
-    # Init action and state sets
-    action_set: List[str] = []
-    state_set: List[str] = ['-']
-
     # Init data
-    d_train, d_valid = init_dumb_add_data()
+    d_train, d_valid, action_set, state_set = setup.init_dumb_add_data()
 
     # Generates the phi function and applies it to Data
     phi: Dict[str, str] = gen_phi(action_set, state_set)
-    conv_data_to_tm(d_train, phi)
-    conv_data_to_tm(d_valid, phi)
+    setup.conv_data_to_tm(d_train, phi)
+    setup.conv_data_to_tm(d_valid, phi)
 
     SIGMA = list(phi.values())
 
