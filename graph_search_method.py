@@ -4,6 +4,7 @@ import copy
 import itertools
 import time
 import math
+import threading
 
 # Local Modules
 import driver
@@ -11,6 +12,7 @@ import driver
 # Defined types
 DeltaOut = Tuple[int, str, str]
 Delta = Dict[Tuple[int, str], DeltaOut]
+DeltaMod = Dict[Tuple[int, str], bool]
 Comb = Tuple[List[List[int]], List[List[int]]]
 
 # Globals
@@ -18,6 +20,7 @@ CURR_TIME: float = 0
 NUM_PERMS: int = 0
 COUNT: int = 0
 NUM_SKIPPED: int = 0
+DELTAS: List[Delta] = []
 
 
 def factorial(num: int) -> int:
@@ -200,7 +203,7 @@ def clean(tape: List[str]) -> List[str]:
         else:
             output_reverse.append(val)
 
-    output = []
+    output: List[str] = []
     front = True
     output_reverse.reverse()
 
@@ -222,9 +225,8 @@ def check_inf_tape(trail: List[Tuple[Tuple[int, str], DeltaOut]],
             and trail[-1][0][0] == current_mode)
 
 
-def run_tm(delta: Delta, tape: List[str], max_steps: int,
-           modified: Dict[Tuple[int, str], bool],
-           debug_mode: bool = False) -> Tuple[List[str], int, bool]:
+def run_tm(delta: Delta, tape: List[str], max_steps: int, modified: DeltaMod,
+           debug_mode: bool = False) -> Tuple[List[str], DeltaMod, int, bool]:
     ''' Runs the TM and checks if it works '''
     global NUM_SKIPPED
 
@@ -243,6 +245,8 @@ def run_tm(delta: Delta, tape: List[str], max_steps: int,
         # INSTRUCTION
         instruction: DeltaOut = delta[(current_mode, read)]
 
+        modified[(current_mode, read)] = True
+
         if debug_mode:
             print(f'Instruction: {instruction}')
             print(f'Tape: {tape}, mode: {current_mode}, ind: {tape_idx}, ' +
@@ -252,8 +256,6 @@ def run_tm(delta: Delta, tape: List[str], max_steps: int,
         if instruction == (-1, '-1', '-1'):
             is_success = True
             break
-
-        modified[(current_mode, read)] = True
 
         # EXECUTE
         # change mode
@@ -293,7 +295,7 @@ def run_tm(delta: Delta, tape: List[str], max_steps: int,
 
     output: List[str] = clean(tape)
 
-    return output, steps, is_success
+    return output, modified, steps, is_success
 
 
 def djikstra(delta: Delta, modes: int, sigma: List[str],
@@ -339,18 +341,21 @@ def check_delta(delta: Delta,
                 num_modes: int,
                 sigma: List[str],
                 max_steps: int = 1000,
-                debug_mode: bool = False) -> bool:
+                debug_mode: bool = False) -> Tuple[bool, DeltaMod]:
     ''' Checks whether delta function satisfies data_train '''
     global NUM_SKIPPED
 
-    if not djikstra(delta, num_modes, sigma):
-        NUM_SKIPPED += 1
+    # if not djikstra(delta, num_modes, sigma):
+    #     NUM_SKIPPED += 1
+    #     return False
 
-        return False
+    modified: DeltaMod = {(mode, symb): False for symb in sigma
+                          for mode in range(num_modes)}
 
     for ind, tape in enumerate(data_train):
-        output, steps, is_success = run_tm(delta, copy.copy(tape),
-                                           max_steps, {})
+        output, modified, steps, is_success = run_tm(
+            delta, copy.copy(tape), max_steps, modified)
+
         if debug_mode:
             print()
             print(f'Episode {ind+1}')
@@ -361,9 +366,9 @@ def check_delta(delta: Delta,
             print()
 
         if not is_success or output != data_valid[ind]:
-            return False
+            return False, modified
 
-    return True
+    return True, modified
 
 
 def copy_perms(perms1: List[Dict[str, DeltaOut]],
@@ -387,6 +392,22 @@ def copy_perms(perms1: List[Dict[str, DeltaOut]],
     return perms1_copy, perms2_copy
 
 
+def calc_num_skipped(num_left: int, num_modes: int, num_sigma: int,
+                     mode: int, lim_mode: int) -> int:
+    ''' Find number of permutations skipped by modify procedure '''
+    num_skip: int = num_left
+    if mode != (num_modes - 1):
+        num_skip *= (
+            calc_num_lim_perms(num_modes - 1, num_sigma)
+            if mode < lim_mode else
+            calc_num_comm_perms(num_modes, num_sigma))
+        num_skip *= int(math.pow(
+            calc_num_comm_perms(num_modes, num_sigma) - mode - 1,
+            num_modes - mode - 2))
+
+    return num_skip
+
+
 def trav_factorial_perms(total_modes: int,
                          sigma: List[str],
                          data_train: List[List[str]],
@@ -395,49 +416,85 @@ def trav_factorial_perms(total_modes: int,
                          lim_mode_perms: List[Dict[str, DeltaOut]],
                          lim_mode: int,
                          delta: Dict[Tuple[int, str], DeltaOut],
-                         mode: int = 0) -> Delta:
+                         mode: int = 0) -> Tuple[Delta, DeltaMod, int]:
     ''' Method that goes through all perms in factorial
         Complexity based on (((s*q)^(s)!) '''
-    global CURR_TIME, COUNT
+    global CURR_TIME, COUNT, NUM_SKIPPED, DELTAS
 
     if mode != total_modes:
+        num_skip: int = 0
+        has_mod_mode: bool = False
+        modified: DeltaMod = {}
+        prev_mode: Dict[str, DeltaOut] = {}
         is_lim_mode: bool = mode == lim_mode
         iter_perms: List[Dict[str, DeltaOut]] = (lim_mode_perms if is_lim_mode
                                                  else mode_perms)
 
-        # print(f'{mode_perms =}\n')
-        # print(f'{lim_mode_perms =}\n')
-
         if iter_perms == {}:
-            return {}
+            return {}, {}, 0
 
-        for perm in iter_perms:
+        for i, perm in enumerate(iter_perms):
             # print(f'{mode}: {is_lim_mode}')
+            if has_mod_mode and modified != {}:
+                for symb in sigma:
+                    if modified[(mode, symb)] and (prev_mode[symb]
+                                                   != perm[symb]):
+                        has_mod_mode = False
+                        break
+
+                num_skip = calc_num_skipped(
+                    1, total_modes, len(sigma), mode, lim_mode)
+                COUNT += num_skip
+                NUM_SKIPPED += num_skip
+
+                if has_mod_mode:
+                    continue
+
             delta.update({(mode, sym): perm[sym] for sym in perm})
 
             mode_perms_copy, lim_perms = copy_perms(mode_perms, lim_mode_perms,
                                                     perm, not is_lim_mode)
 
-            delta_res = trav_factorial_perms(total_modes, sigma,
-                                             data_train, data_valid,
-                                             mode_perms_copy, lim_perms,
-                                             lim_mode, delta, mode+1)
-            if delta_res != {}:
-                return delta_res
+            delta_res, modified, skipped = trav_factorial_perms(
+                total_modes, sigma, data_train, data_valid, mode_perms_copy,
+                lim_perms, lim_mode, delta, mode+1)
 
-        return {}
+            if delta_res != {}:
+                return delta_res, modified, 0
+
+            has_mod_mode = False
+            for symb in sigma:
+                if modified[(mode, symb)]:
+                    has_mod_mode = True
+
+            if has_mod_mode:
+                # print(f'{skipped = }')
+                # print()
+                COUNT += skipped
+                NUM_SKIPPED += skipped
+                prev_mode = perm
+            else:
+                num_skip = calc_num_skipped(
+                    len(iter_perms) - i - 1, total_modes,
+                    len(sigma), mode, lim_mode) + skipped
+                # print(f'{num_skip = }, {len(iter_perms) = }, {i = }, {mode = }')
+                break
+
+        return {}, modified, num_skip
 
     COUNT += 1
 
-    if COUNT % 100 == 0:
+    is_valid, modified = check_delta(
+        delta, data_train, data_valid, total_modes, sigma)
+
+    if COUNT % 1000 == 0:
         print(chr(27) + "[2J")
         print(f'{COUNT}/{NUM_PERMS} - {COUNT*100/NUM_PERMS:.2f}% | ' +
-              f'Skipped {NUM_SKIPPED} | ' +
+              # f'{COUNT - NUM_SKIPPED} Checked, {NUM_SKIPPED} Skipped | ' +
               f'{time.time() - CURR_TIME:.2f}s')
+        # print(f'{modified}')
 
-    return (delta
-            if check_delta(delta, data_train, data_valid, total_modes, sigma)
-            else {})
+    return delta if is_valid else {}, modified, 0
 
 
 def pprint_perms(perms: List[Dict[str, DeltaOut]]) -> None:
@@ -454,40 +511,85 @@ def pprint_perms(perms: List[Dict[str, DeltaOut]]) -> None:
 
 def factorial_perms_method(num_modes: int, sigma: List[str],
                            data_train: List[List[str]],
-                           data_valid: List[List[str]]) -> Delta:
+                           data_valid: List[List[str]],
+                           start_mode: int, end_mode: int,
+                           is_thread: bool = False) -> Delta:
     ''' Method that calls the the traversal '''
-    global CURR_TIME
+    global CURR_TIME, DELTAS
 
     CURR_TIME = time.time()
     mode_perms, lim_mode_perms = get_mode_perms(sigma, num_modes)
 
-    print(f'{len(mode_perms) = }')
+    # print(f'{len(mode_perms) = }')
     # pprint_perms(mode_perms)
 
-    # for i in range(int(math.pow(num_modes * len(sigma) * 2 + 1, len(sigma)))):
+    # for i in range(int(math.pow(num_modes * len(sigma) * 2 + 1,
+    #                             len(sigma)))):
     #     test_mode_perms.append(gen_mode_perm(sigma, num_modes, i))
     # pprint_perms(test_mode_perms)
 
     # print(test_mode_perms == mode_perms)
 
-    print(f'{len(lim_mode_perms) = }')
-
+    # print(f'{len(lim_mode_perms) = }')
     # pprint_perms(lim_mode_perms)
 
-    print()
-
-    for mode in range(num_modes):
-        delta: Delta = trav_factorial_perms(num_modes, sigma, data_train,
-                                            data_valid, mode_perms,
-                                            lim_mode_perms, mode, {})
+    for mode in range(start_mode, end_mode):
+        delta, _, _ = trav_factorial_perms(
+            num_modes, sigma, data_train, data_valid, mode_perms,
+            lim_mode_perms, mode, {})
 
         if delta != {}:
+            if is_thread:
+                DELTAS.append(delta)
             return delta
+
+    if is_thread:
+        DELTAS.append({})
 
     return {}
 
 
-def test_valid_delta():
+def thread_perms_method(num_modes: int, sigma: List[str],
+                        data_train: List[List[str]],
+                        data_valid: List[List[str]],
+                        num_threads: int = 10) -> Delta:
+    ''' Does factorial_perms_method threaded '''
+    global DELTAS
+
+    num_threads = num_threads if num_threads < num_modes else num_modes
+    threads: List[threading.Thread] = []
+
+    mode_ranges: List[Tuple[int, int]] = [(0, 0) for _ in range(num_threads)]
+
+    for i in range(num_threads):
+        prev_mode: int = 0 if i == 0 else mode_ranges[i-1][1]
+        mode_ranges[i] = (prev_mode, (prev_mode + int(num_modes/num_threads) +
+                                      (1 if num_modes % num_threads > i
+                                       else 0)))
+
+    for mode_range in mode_ranges:
+        thread: threading.Thread = threading.Thread(
+            target=factorial_perms_method,
+            args=(num_modes, sigma, data_train, data_valid,
+                  mode_range[0], mode_range[1], True))
+
+        thread.start()
+        threads.append(thread)
+
+    # for thread in threads:
+    #     thread.join()
+
+    while (len(DELTAS) < num_threads and
+           filter(lambda d: d != {}, DELTAS) == []):
+        pass
+
+    if filter(lambda d: d != {}, DELTAS) != []:
+        return list(filter(lambda d: d != {}, DELTAS))[0]
+
+    return {}
+
+
+def test_valid_delta() -> None:
     ''' Tests valid delta '''
     # Init data
     data_train, data_valid, action_set, state_set = driver.init_dumb_add_data()
@@ -523,17 +625,19 @@ def main() -> None:
     driver.conv_data_to_tm(data_valid, phi)
 
     sigma: List[str] = list(phi.values())
-    num_modes: int = 4
-    sigma = ['_', 's0', 's1']
+    num_modes: int = 3
 
     NUM_PERMS = calc_num_perms(num_modes, len(sigma))
 
-    res_delta: Delta = factorial_perms_method(num_modes, sigma,
-                                              data_train, data_valid)
+    res_delta: Delta = factorial_perms_method(
+        num_modes, sigma, data_train, data_valid, 0, num_modes)
+
+    # res_delta: Delta = thread_perms_method(num_modes, sigma,
+    #                                        data_train, data_valid)
 
     print(chr(27) + "[2J")
     print(f'{COUNT}/{NUM_PERMS} - {COUNT*100/NUM_PERMS:.2f}% | ' +
-          f'Skipped {NUM_SKIPPED} | ' +
+          f'{COUNT - NUM_SKIPPED} Checked, {NUM_SKIPPED} Skipped | ' +
           f'{time.time() - CURR_TIME:.2f}s')
     print(res_delta)
 
