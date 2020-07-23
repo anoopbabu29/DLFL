@@ -146,10 +146,23 @@ def get_mode_perms(sigma: List[str],
     return mode_combinations, lim_combinations
 
 
+def gen_perms_wo_rep(inp_set: List[int]) -> List[List[int]]:
+    ''' Generates all permutations w/o repetition'''
+    if len(inp_set) == []:
+        return []
+    if len(inp_set) == 1:
+        return [[inp_set[0]]]
+    perms: List[List[int]] = []
+    for i, curr_inp in enumerate(inp_set):
+        perms += [[curr_inp] + prev_perm for prev_perm in
+                  gen_perms_wo_rep(inp_set[:i] + inp_set[i+1:])]
+    return perms
+
+
 def swap_modes(delta: Dict[Tuple[int, str], int], sigma: List[str],
                mode_a: int, mode_b: int) -> Dict[Tuple[int, str], int]:
     ''' Returns a delta where mode_a swaps with mode_b '''
-    new_delta: Dict[Tuple[int, str], int] = copy.copy(delta)
+    new_delta: Dict[Tuple[int, str], int] = delta
 
     temp_delta: Dict[Tuple[int, str], int] = {edge_info: new_delta[edge_info]
                                               for edge_info in new_delta
@@ -176,14 +189,28 @@ def test_enum_unique_graph(num_modes: int, sigma: List[str]) -> int:
     out_mode_set: List[List[int]] = [list(range(num_modes))
                                      for _ in range(len(sigma) * num_modes)]
     graph_set: List[Tuple[int, ...]] = list(itertools.product(*out_mode_set))
-    num_unique: int = 0
+    duplicates: List[int] = [0] * calc_helper.factorial(num_modes)
 
+    print(chr(27) + "[2J")
     print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
     print(f'Number of Graphs: {len(graph_set)}, ' +
           f'Calc: {int(math.pow(num_modes, num_modes * len(sigma)))}')
 
+    curr_time: float = time.time()
+
     for i, graph in enumerate(graph_set):
         # print(f'Graph #{i+1}')
+        num_dups: int = 0
+
+        if i % 100 == 1:
+            time_taken: float = time.time() - curr_time
+            est_time: float = time_taken * (len(graph_set) / i)
+            print(chr(27) + "[2J")
+            print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
+            print(f'Number of Graphs: {len(graph_set)}, ' +
+                f'Calc: {int(math.pow(num_modes, num_modes * len(sigma)))}')
+            print(f'Count: {i+1} | ' +
+                  f'Time Taken: {time_taken:.2f}s | ETA: {est_time:.2f}s')
 
         delta: Dict[Tuple[int, str], int] = {}
         for edge_num, out_mode in enumerate(graph):
@@ -192,23 +219,26 @@ def test_enum_unique_graph(num_modes: int, sigma: List[str]) -> int:
 
             delta[(mode, symb)] = out_mode
 
-        for mode_a in range(num_modes):
-            for mode_b in range(mode_a + 1, num_modes):
-                # print(f'{mode_a = }, {mode_b = }')
-                # print(f'Original: {tuple(delta.values())}')
-                swapped_delta: Tuple[int, ...] = tuple(swap_modes(
-                    delta, sigma, mode_a, mode_b).values())
-                # print(f'Swapped: {swapped_delta}')
-                # print()
+        for perm in gen_perms_wo_rep(list(range(num_modes)))[1:]:
+            swapped_delta: Dict[Tuple[int, str], int] = copy.copy(delta)
 
-                if swapped_delta in graph_set and graph != swapped_delta:
-                    graph_set.remove(swapped_delta)
+            for j, _ in enumerate(perm):
+                while j != perm[j]:
+                    temp: int = perm[j]
+                    perm[j] = perm[temp]
+                    perm[temp] = temp
 
-                if graph == swapped_delta:
-                    num_unique += 1
+                    swapped_delta = swap_modes(swapped_delta, sigma, j, temp)
+
+            if (tuple(swapped_delta.values()) in graph_set and (
+                    delta != swapped_delta)):
+                graph_set.remove(tuple(swapped_delta.values()))
+                num_dups += 1
+
+        duplicates[num_dups] += 1
 
     print()
-    print(f'Number of Unique Graphs: {len(graph_set)}, {num_unique = }')
+    print(f'Number of Unique Graphs: {len(graph_set)}, {duplicates = }')
 
     return len(graph_set)
 
@@ -460,7 +490,7 @@ def main() -> None:
     ''' Main Function used for testing '''
     global NUM_PERMS
 
-    test_enum_unique_graph(3, ['_', 's0'])
+    test_enum_unique_graph(3, ['_', 's0', 's1'])
 
     quit()
 
