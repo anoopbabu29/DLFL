@@ -25,7 +25,7 @@ def test_valid_delta(
 
     sigma: List[str] = list(phi.values())
     for extra_sigma in range(num_extra_sigma):
-        sigma.append(f'e{extra_sigma}')
+        sigma.append(f's{extra_sigma + len(sigma)}')
 
     print(lim_tm_search.check_delta(delta_valid, data_train, data_valid,
                                     num_modes, sigma, debug_mode=True))

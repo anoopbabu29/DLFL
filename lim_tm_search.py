@@ -1,5 +1,5 @@
 ''' Modules '''
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple, List, Set, Any
 import copy
 import itertools
 import time
@@ -144,6 +144,73 @@ def get_mode_perms(sigma: List[str],
         lambda comb: halt in comb.values(), mode_combinations))
 
     return mode_combinations, lim_combinations
+
+
+def swap_modes(delta: Dict[Tuple[int, str], int], sigma: List[str],
+               mode_a: int, mode_b: int) -> Dict[Tuple[int, str], int]:
+    ''' Returns a delta where mode_a swaps with mode_b '''
+    new_delta: Dict[Tuple[int, str], int] = copy.copy(delta)
+
+    temp_delta: Dict[Tuple[int, str], int] = {edge_info: new_delta[edge_info]
+                                              for edge_info in new_delta
+                                              if edge_info[0] == mode_a}
+
+    for symb in sigma:
+        new_delta[(mode_a, symb)] = new_delta[(mode_b, symb)]
+
+    for edge_info in temp_delta:
+        new_delta[(mode_b, edge_info[1])] = temp_delta[edge_info]
+
+    for edge_info in new_delta:
+        # print(f'{edge_info = }, {new_delta[edge_info] = }')
+        if new_delta[edge_info] == mode_a:
+            new_delta[edge_info] = mode_b
+        elif new_delta[edge_info] == mode_b:
+            new_delta[edge_info] = mode_a
+
+    return new_delta
+
+
+def test_enum_unique_graph(num_modes: int, sigma: List[str]) -> int:
+    ''' Enumerate over nonsimple, directed graphs '''
+    out_mode_set: List[List[int]] = [list(range(num_modes))
+                                     for _ in range(len(sigma) * num_modes)]
+    graph_set: List[Tuple[int, ...]] = list(itertools.product(*out_mode_set))
+    num_unique: int = 0
+
+    print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
+    print(f'Number of Graphs: {len(graph_set)}, ' +
+          f'Calc: {int(math.pow(num_modes, num_modes * len(sigma)))}')
+
+    for i, graph in enumerate(graph_set):
+        # print(f'Graph #{i+1}')
+
+        delta: Dict[Tuple[int, str], int] = {}
+        for edge_num, out_mode in enumerate(graph):
+            mode: int = int(edge_num / len(sigma))
+            symb: str = sigma[edge_num % len(sigma)]
+
+            delta[(mode, symb)] = out_mode
+
+        for mode_a in range(num_modes):
+            for mode_b in range(mode_a + 1, num_modes):
+                # print(f'{mode_a = }, {mode_b = }')
+                # print(f'Original: {tuple(delta.values())}')
+                swapped_delta: Tuple[int, ...] = tuple(swap_modes(
+                    delta, sigma, mode_a, mode_b).values())
+                # print(f'Swapped: {swapped_delta}')
+                # print()
+
+                if swapped_delta in graph_set and graph != swapped_delta:
+                    graph_set.remove(swapped_delta)
+
+                if graph == swapped_delta:
+                    num_unique += 1
+
+    print()
+    print(f'Number of Unique Graphs: {len(graph_set)}, {num_unique = }')
+
+    return len(graph_set)
 
 
 def check_delta(delta: Delta,
@@ -392,6 +459,10 @@ def thread_perms_method(num_modes: int, sigma: List[str],
 def main() -> None:
     ''' Main Function used for testing '''
     global NUM_PERMS
+
+    test_enum_unique_graph(3, ['_', 's0'])
+
+    quit()
 
     # Init data
     data_train, data_valid, action_set, state_set = setup.init_mult_data()
