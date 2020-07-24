@@ -1,5 +1,5 @@
 ''' Modules '''
-from typing import Dict, Tuple, List, Set, Any
+from typing import Dict, Tuple, List, Iterable, Set, Any
 import copy
 import itertools
 import time
@@ -188,29 +188,25 @@ def test_enum_unique_graph(num_modes: int, sigma: List[str]) -> int:
     ''' Enumerate over nonsimple, directed graphs '''
     out_mode_set: List[List[int]] = [list(range(num_modes))
                                      for _ in range(len(sigma) * num_modes)]
-    graph_set: List[Tuple[int, ...]] = list(itertools.product(*out_mode_set))
+    graph_set: Iterable[Tuple[int, ...]] = itertools.product(*out_mode_set)
+
+    skip_set: Set[Tuple[int, ...]] = set()
+    unique_graphs: List[Tuple[int, ...]] = []
     duplicates: List[int] = [0] * calc_helper.factorial(num_modes)
+    total_graphs: int = int(math.pow(num_modes, num_modes * len(sigma)))
 
     print(chr(27) + "[2J")
     print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
-    print(f'Number of Graphs: {len(graph_set)}, ' +
-          f'Calc: {int(math.pow(num_modes, num_modes * len(sigma)))}')
+    print(f'Number of Graphs: {total_graphs}')
 
     curr_time: float = time.time()
 
     for i, graph in enumerate(graph_set):
         # print(f'Graph #{i+1}')
-        num_dups: int = 0
+        if graph in skip_set:
+            continue
 
-        if i % 100 == 1:
-            time_taken: float = time.time() - curr_time
-            est_time: float = time_taken * (len(graph_set) / i)
-            print(chr(27) + "[2J")
-            print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
-            print(f'Number of Graphs: {len(graph_set)}, ' +
-                f'Calc: {int(math.pow(num_modes, num_modes * len(sigma)))}')
-            print(f'Count: {i+1} | ' +
-                  f'Time Taken: {time_taken:.2f}s | ETA: {est_time:.2f}s')
+        num_dups: int = 0
 
         delta: Dict[Tuple[int, str], int] = {}
         for edge_num, out_mode in enumerate(graph):
@@ -230,17 +226,29 @@ def test_enum_unique_graph(num_modes: int, sigma: List[str]) -> int:
 
                     swapped_delta = swap_modes(swapped_delta, sigma, j, temp)
 
-            if (tuple(swapped_delta.values()) in graph_set and (
-                    delta != swapped_delta)):
-                graph_set.remove(tuple(swapped_delta.values()))
+            if tuple(swapped_delta.values()) not in skip_set and (
+                    delta != swapped_delta):
+                skip_set.add(tuple(swapped_delta.values()))
                 num_dups += 1
 
         duplicates[num_dups] += 1
+        unique_graphs.append(graph)
+
+        if (i + 1) % 1 == 0:
+            time_taken: float = time.time() - curr_time
+            count: int = sum([(k+1) * dup for k, dup in enumerate(duplicates)])
+            est_time: float = time_taken * ((total_graphs - count) / count)
+
+            print(chr(27) + "[2J")
+            print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
+            print(f'Count: {count}/{total_graphs} | ' +
+                  f'Time Taken: {time_taken:.2f}/{time_taken+est_time:.2f}s' +
+                  f' {100* time_taken/(time_taken+est_time):.2f}%')
 
     print()
-    print(f'Number of Unique Graphs: {len(graph_set)}, {duplicates = }')
+    print(f'Number of Unique Graphs: {len(unique_graphs)}, {duplicates = }')
 
-    return len(graph_set)
+    return len(unique_graphs)
 
 
 def check_delta(delta: Delta,
@@ -490,7 +498,7 @@ def main() -> None:
     ''' Main Function used for testing '''
     global NUM_PERMS
 
-    test_enum_unique_graph(3, ['_', 's0', 's1'])
+    test_enum_unique_graph(6, ['_', 's0'])
 
     quit()
 
