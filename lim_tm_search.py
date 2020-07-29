@@ -1,5 +1,5 @@
 ''' Modules '''
-from typing import Dict, Tuple, List, Iterable, Set, Any
+from typing import Dict, Tuple, List, Any
 import copy
 import itertools
 import time
@@ -144,111 +144,6 @@ def get_mode_perms(sigma: List[str],
         lambda comb: halt in comb.values(), mode_combinations))
 
     return mode_combinations, lim_combinations
-
-
-def gen_perms_wo_rep(inp_set: List[int]) -> List[List[int]]:
-    ''' Generates all permutations w/o repetition'''
-    if len(inp_set) == []:
-        return []
-    if len(inp_set) == 1:
-        return [[inp_set[0]]]
-    perms: List[List[int]] = []
-    for i, curr_inp in enumerate(inp_set):
-        perms += [[curr_inp] + prev_perm for prev_perm in
-                  gen_perms_wo_rep(inp_set[:i] + inp_set[i+1:])]
-    return perms
-
-
-def swap_modes(delta: Dict[Tuple[int, str], int], sigma: List[str],
-               mode_a: int, mode_b: int) -> Dict[Tuple[int, str], int]:
-    ''' Returns a delta where mode_a swaps with mode_b '''
-    new_delta: Dict[Tuple[int, str], int] = delta
-
-    temp_delta: Dict[Tuple[int, str], int] = {edge_info: new_delta[edge_info]
-                                              for edge_info in new_delta
-                                              if edge_info[0] == mode_a}
-
-    for symb in sigma:
-        new_delta[(mode_a, symb)] = new_delta[(mode_b, symb)]
-
-    for edge_info in temp_delta:
-        new_delta[(mode_b, edge_info[1])] = temp_delta[edge_info]
-
-    for edge_info in new_delta:
-        # print(f'{edge_info = }, {new_delta[edge_info] = }')
-        if new_delta[edge_info] == mode_a:
-            new_delta[edge_info] = mode_b
-        elif new_delta[edge_info] == mode_b:
-            new_delta[edge_info] = mode_a
-
-    return new_delta
-
-
-def test_enum_unique_graph(num_modes: int, sigma: List[str]) -> int:
-    ''' Enumerate over nonsimple, directed graphs '''
-    out_mode_set: List[List[int]] = [list(range(num_modes))
-                                     for _ in range(len(sigma) * num_modes)]
-    graph_set: Iterable[Tuple[int, ...]] = itertools.product(*out_mode_set)
-
-    skip_set: Set[Tuple[int, ...]] = set()
-    unique_graphs: List[Tuple[int, ...]] = []
-    duplicates: List[int] = [0] * calc_helper.factorial(num_modes)
-    total_graphs: int = int(math.pow(num_modes, num_modes * len(sigma)))
-
-    print(chr(27) + "[2J")
-    print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
-    print(f'Number of Graphs: {total_graphs}')
-
-    curr_time: float = time.time()
-
-    for i, graph in enumerate(graph_set):
-        # print(f'Graph #{i+1}')
-        if graph in skip_set:
-            continue
-
-        num_dups: int = 0
-
-        delta: Dict[Tuple[int, str], int] = {}
-        for edge_num, out_mode in enumerate(graph):
-            mode: int = int(edge_num / len(sigma))
-            symb: str = sigma[edge_num % len(sigma)]
-
-            delta[(mode, symb)] = out_mode
-
-        for perm in gen_perms_wo_rep(list(range(num_modes)))[1:]:
-            swapped_delta: Dict[Tuple[int, str], int] = copy.copy(delta)
-
-            for j, _ in enumerate(perm):
-                while j != perm[j]:
-                    temp: int = perm[j]
-                    perm[j] = perm[temp]
-                    perm[temp] = temp
-
-                    swapped_delta = swap_modes(swapped_delta, sigma, j, temp)
-
-            if tuple(swapped_delta.values()) not in skip_set and (
-                    delta != swapped_delta):
-                skip_set.add(tuple(swapped_delta.values()))
-                num_dups += 1
-
-        duplicates[num_dups] += 1
-        unique_graphs.append(graph)
-
-        if (i + 1) % 1 == 0:
-            time_taken: float = time.time() - curr_time
-            count: int = sum([(k+1) * dup for k, dup in enumerate(duplicates)])
-            est_time: float = time_taken * ((total_graphs - count) / count)
-
-            print(chr(27) + "[2J")
-            print(f'Number of Vertices, Edges: {num_modes}, {len(sigma)}')
-            print(f'Count: {count}/{total_graphs} | ' +
-                  f'Time Taken: {time_taken:.2f}/{time_taken+est_time:.2f}s' +
-                  f' {100* time_taken/(time_taken+est_time):.2f}%')
-
-    print()
-    print(f'Number of Unique Graphs: {len(unique_graphs)}, {duplicates = }')
-
-    return len(unique_graphs)
 
 
 def check_delta(delta: Delta,
@@ -497,10 +392,6 @@ def thread_perms_method(num_modes: int, sigma: List[str],
 def main() -> None:
     ''' Main Function used for testing '''
     global NUM_PERMS
-
-    test_enum_unique_graph(6, ['_', 's0'])
-
-    quit()
 
     # Init data
     data_train, data_valid, action_set, state_set = setup.init_mult_data()

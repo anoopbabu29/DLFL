@@ -1,5 +1,7 @@
 ''' Modules '''
+from typing import List
 import math
+import sympy
 
 
 def factorial(num: int) -> int:
@@ -58,3 +60,28 @@ def calc_num_skipped(num_left: int, num_modes: int, num_sigma: int,
             num_modes - mode - 2))
 
     return num_skip
+
+
+def prime_fact(num: int) -> List[int]:
+    ''' Finds the prime factorization of a number '''
+    if sympy.isprime(num):
+        return [num]
+
+    for prime in sympy.sieve.primerange(0, num):
+        if num % prime == 0:
+            return [prime] + prime_fact(int(num/prime))
+
+    return []
+
+
+def gen_perms_wo_rep(inp_set: List[int]) -> List[List[int]]:
+    ''' Generates all permutations w/o repetition'''
+    if len(inp_set) == []:
+        return []
+    if len(inp_set) == 1:
+        return [[inp_set[0]]]
+    perms: List[List[int]] = []
+    for i, curr_inp in enumerate(inp_set):
+        perms += [[curr_inp] + prev_perm for prev_perm in
+                  gen_perms_wo_rep(inp_set[:i] + inp_set[i+1:])]
+    return perms
